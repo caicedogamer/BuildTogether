@@ -4,6 +4,7 @@
 #include <EditorP2P/core/Permissions.hpp>
 #include <EditorP2P/net/Endpoint.hpp>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ep2p {
@@ -49,6 +50,7 @@ namespace ep2p {
         const SessionConfig& config() const { return m_config; }
         PlayerId             myPlayerId() const { return m_myPlayerId; }
         Role                 myRole()  const { return m_myRole; }
+        const std::string&   hostDisplayName() const { return m_hostDisplayName; }
 
         // Peer record management (host only)
         void              addPeer(const PeerRecord& peer);
@@ -61,12 +63,14 @@ namespace ep2p {
         void setState(SessionState s) { m_state = s; }
         void setMyPlayerId(PlayerId id) { m_myPlayerId = id; }
         void setMyRole(Role role) { m_myRole = role; }
+        void setHostDisplayName(std::string name) { m_hostDisplayName = std::move(name); }
 
     private:
         SessionConfig m_config;
         SessionState  m_state = SessionState::Idle;
         PlayerId      m_myPlayerId = 0;
         Role          m_myRole = Role::Owner;
+        std::string   m_hostDisplayName;
 
         // Host only: connected peers
         std::vector<PeerRecord> m_peers;  // V1: at most 1 entry

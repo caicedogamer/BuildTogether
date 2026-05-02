@@ -10,6 +10,8 @@
 #endif
 
 #include <Geode/Geode.hpp>
+#include <Geode/binding/GJAccountManager.hpp>
+#include <Geode/binding/GameManager.hpp>
 
 #include <EditorP2P/core/SessionManager.hpp>
 #include <EditorP2P/config/RuntimeConfig.hpp>
@@ -37,6 +39,43 @@ namespace {
     };
 
     EditorP2PCleanup g_cleanup;
+
+    bool isAllowedNameChar(char ch) {
+        return (ch >= 'A' && ch <= 'Z') ||
+               (ch >= 'a' && ch <= 'z') ||
+               (ch >= '0' && ch <= '9') ||
+               ch == '_' || ch == '-';
+    }
+
+    std::string sanitizeDisplayName(std::string name) {
+        std::string out;
+        out.reserve(name.size());
+        for (char ch : name) {
+            if (isAllowedNameChar(ch)) out.push_back(ch);
+            if (out.size() >= 31) break;
+        }
+        return out;
+    }
+
+    std::string resolveDisplayName() {
+        auto configured = Mod::get()->getSettingValue<std::string>("display-name");
+        auto sanitized = sanitizeDisplayName(configured);
+        if (!sanitized.empty() && sanitized != "Player") {
+            return sanitized;
+        }
+
+        if (auto* account = GJAccountManager::sharedState()) {
+            sanitized = sanitizeDisplayName(account->m_username.c_str());
+            if (!sanitized.empty()) return sanitized;
+        }
+
+        if (auto* gameManager = GameManager::sharedState()) {
+            sanitized = sanitizeDisplayName(gameManager->m_playerName.c_str());
+            if (!sanitized.empty()) return sanitized;
+        }
+
+        return "User";
+    }
 }
 
 $on_mod(Loaded) {
@@ -57,7 +96,7 @@ $on_mod(Loaded) {
 
     // --- Load runtime config from Geode settings ---
     auto& cfg = RuntimeConfig::get();
-    cfg.displayName = Mod::get()->getSettingValue<std::string>("display-name");
+    cfg.displayName = resolveDisplayName();
     cfg.hostPort    = static_cast<unsigned short>(
                           Mod::get()->getSettingValue<int64_t>("default-port"));
 

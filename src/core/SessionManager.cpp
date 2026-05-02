@@ -316,7 +316,10 @@ namespace ep2p {
             }
         } else {
             summary += "\nYou: Peer / " + std::string(roleName(m_session->myRole()));
-            summary += "\nHost: " + m_session->config().remoteEndpoint.str();
+            auto hostName = m_session->hostDisplayName().empty()
+                ? m_session->config().remoteEndpoint.str()
+                : m_session->hostDisplayName();
+            summary += "\nHost: " + hostName;
         }
 
         if (m_session->isConnected()) {
@@ -902,6 +905,7 @@ namespace ep2p {
 
         m_session->setMyPlayerId(ack.assignedPeerId);
         m_session->setMyRole(static_cast<Role>(ack.grantedRole));
+        m_session->setHostDisplayName(ack.hostDisplayName);
         m_session->setState(SessionState::Connected);
         m_lastHeartbeatMs = Clock::now();
         m_heartbeatAccum = 0.f;
@@ -936,6 +940,9 @@ namespace ep2p {
         state.colorRgb = decoded.value().colorRgb;
         state.lastUpdate = Clock::now();
         state.sequence = msg.sequence;
+        if (auto* peer = m_session->findPeer(msg.senderId)) {
+            peer->displayName = state.displayName;
+        }
         EditorBridge::get().applyRemotePresence(state);
     }
 

@@ -12,11 +12,11 @@
     "tags": ["editor", "utility"],
     "settings": {
         "display-name": {
-            "name": "Display Name",
-            "description": "Name shown to other players in the editor.",
+            "name": "Display Name Override",
+            "description": "Optional name shown to other players. Leave blank to use your GD username.",
             "type": "string",
-            "default": "Player",
-            "match": "^[A-Za-z0-9_\\-]{1,31}$"
+            "default": "",
+            "match": "^$|^[A-Za-z0-9_\\-]{1,31}$"
         },
         "default-port": {
             "name": "Default Port",

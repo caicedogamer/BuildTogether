@@ -44,6 +44,11 @@ namespace ep2p {
 
         if (m_nodes.find(state.playerId) == m_nodes.end()) {
             addPeerNode(state);
+        } else {
+            auto& node = m_nodes[state.playerId];
+            if (node.label) {
+                node.label->setString(state.displayName.c_str());
+            }
         }
         // Position update happens in update() each frame.
     }
