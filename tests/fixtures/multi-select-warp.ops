@@ -1,0 +1,5 @@
+# EditorP2P playback fixture: multi-select warp
+place|remote_receive|10|1|60|60|0|1|1|fixture.warp|1,1,2,60,3,60
+place|remote_receive|11|1|90|60|0|1|1|fixture.warp|1,1,2,90,3,60
+commit_edit|remote_receive|10|1|58|62|12|1.2|0.9|fixture.warp|1,1,2,58,3,62,6,12,32,1.2
+commit_edit|remote_receive|11|1|94|64|12|1.2|0.9|fixture.warp|1,1,2,94,3,64,6,12,32,1.2

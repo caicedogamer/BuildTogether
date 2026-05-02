@@ -1,0 +1,4 @@
+# EditorP2P playback fixture: drag placement
+# format: type|direction|netId|gdObjectId|x|y|rotation|scaleX|scaleY|origin|saveString
+place|remote_receive|1|1|120|90|0|1|1|fixture.drag|1,1,2,120,3,90
+commit_edit|remote_receive|1|1|150|105|0|1|1|fixture.drag|1,1,2,150,3,105

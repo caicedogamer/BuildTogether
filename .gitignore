@@ -1,0 +1,42 @@
+# Build outputs and generated project files
+build/
+build-tests/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+
+# Compiled artifacts
+*.dll
+*.exe
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.obj
+*.tlog
+*.recipe
+*.geode
+
+# IDE and local machine files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+
+# Logs and local config
+*.log
+*.tmp
+*.cache
+.env
+.env.*
+
+# OS noise
+Thumbs.db
+Desktop.ini

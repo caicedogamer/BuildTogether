@@ -1,0 +1,4 @@
+# EditorP2P playback fixture: delete after warp
+place|remote_receive|20|1|100|100|0|1|1|fixture.delete_after_warp|1,1,2,100,3,100
+commit_edit|remote_receive|20|1|112|108|15|1.4|0.8|fixture.delete_after_warp|1,1,2,112,3,108,6,15,32,1.4
+delete|remote_receive|20|1|112|108|15|1.4|0.8|fixture.delete_after_warp|

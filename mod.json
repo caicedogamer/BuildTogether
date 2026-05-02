@@ -1,0 +1,30 @@
+{
+    "geode": "5.6.1",
+    "gd": {
+        "win": "2.2081"
+    },
+    "id": "buildtogether.editorp2p",
+    "name": "EditorP2P",
+    "version": "0.1.0",
+    "description": "Prototype P2P live collaboration for the Geometry Dash level editor. No public servers. LAN or direct IP only.",
+    "developers": ["BuildTogether"],
+    "links": {},
+    "tags": ["editor", "utility"],
+    "settings": {
+        "display-name": {
+            "name": "Display Name",
+            "description": "Name shown to other players in the editor.",
+            "type": "string",
+            "default": "Player",
+            "match": "^[A-Za-z0-9_\\-]{1,31}$"
+        },
+        "default-port": {
+            "name": "Default Port",
+            "description": "TCP port used when hosting a session.",
+            "type": "int",
+            "default": 43720,
+            "min": 1024,
+            "max": 65535
+        }
+    }
+}
