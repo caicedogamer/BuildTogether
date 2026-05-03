@@ -5,8 +5,8 @@
     },
     "id": "buildtogether.editorp2p",
     "name": "EditorP2P",
-    "version": "0.1.0",
-    "description": "Prototype P2P live collaboration for the Geometry Dash level editor. No public servers. LAN or direct IP only.",
+    "version": "0.2.0",
+    "description": "Prototype P2P live collaboration for the Geometry Dash level editor. LAN discovery plus optional bore relay join codes.",
     "developers": ["BuildTogether"],
     "links": {},
     "tags": ["editor", "utility"],
@@ -25,6 +25,13 @@
             "default": 43720,
             "min": 1024,
             "max": 65535
+        },
+        "relay-host": {
+            "name": "Relay Host",
+            "description": "Bore-compatible relay used for internet join codes. Default bore.pub requires no setup.",
+            "type": "string",
+            "default": "bore.pub",
+            "match": "^[A-Za-z0-9_.\\-]{1,253}$"
         }
     }
 }

@@ -31,7 +31,7 @@ namespace ep2p {
 
         auto size = this->m_mainLayer->getContentSize();
 
-        m_joinCodeInput = geode::TextInput::create(290.f, "XXXX-XXXX");
+        m_joinCodeInput = geode::TextInput::create(290.f, "BT1-...");
         m_joinCodeInput->setPosition({size.width / 2.f, size.height / 2.f + 38.f});
         m_joinCodeInput->setCommonFilter(geode::CommonFilter::Any);
         m_joinCodeInput->setMaxCharCount(80);
@@ -123,7 +123,7 @@ namespace ep2p {
                        [](unsigned char c) { return std::toupper(c); });
 
         if (key.size() != 9 || key[4] != '-') {
-            setStatus("Invalid code.\nEnter XXXX-XXXX or IP:port#XXXX-XXXX.");
+            setStatus("Invalid code.\nEnter BT1-... or XXXX-XXXX on LAN.");
             return;
         }
 

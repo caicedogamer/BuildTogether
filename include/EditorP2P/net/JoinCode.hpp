@@ -7,7 +7,8 @@
 namespace ep2p {
 
     // Encodes a full join address as a single user-shareable string.
-    // Format: "192.168.1.25:43720#ABCD-1234"
+    // Legacy format: "192.168.1.25:43720#ABCD-1234"
+    // Compact format: "BT1-..." (base64url of the legacy format)
     //          -----------------  ---------
     //              Endpoint       SessionKey
     struct JoinCode {
@@ -17,8 +18,11 @@ namespace ep2p {
         // Returns std::nullopt if the string is malformed.
         static std::optional<JoinCode> parse(const std::string& raw);
 
-        // Produces "ip:port#key"
+        // Produces "host:port#key"
         std::string format() const;
+
+        // Produces "BT1-..." for friendlier copy/paste without showing the endpoint.
+        std::string formatCompact() const;
 
         // Generates a random 8-character session key in "XXXX-XXXX" format.
         static std::string generateKey();

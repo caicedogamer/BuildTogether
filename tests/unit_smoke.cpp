@@ -21,13 +21,28 @@ namespace {
         auto endpoint = Endpoint::fromString("192.168.1.25:43720");
         assert(endpoint.host == "192.168.1.25");
         assert(endpoint.port == 43720);
+        auto relayEndpoint = Endpoint::fromString("bore.pub:51234");
+        assert(relayEndpoint.host == "bore.pub");
+        assert(relayEndpoint.port == 51234);
         assert(Endpoint::fromString(":43720").empty());
         assert(Endpoint::fromString("192.168.1.25:notaport").empty());
 
         auto joinCode = JoinCode::parse("192.168.1.25:43720#abcd-1234");
         assert(joinCode);
         assert(joinCode->sessionKey == "ABCD-1234");
+        auto relayCode = JoinCode::parse("bore.pub:51234#ab12-cd34");
+        assert(relayCode);
+        assert(relayCode->endpoint.host == "bore.pub");
+        assert(relayCode->endpoint.port == 51234);
+        assert(relayCode->sessionKey == "AB12-CD34");
+        auto compactRelayCode = relayCode->formatCompact();
+        assert(compactRelayCode.rfind("BT1-", 0) == 0);
+        auto parsedCompactRelayCode = JoinCode::parse(compactRelayCode);
+        assert(parsedCompactRelayCode);
+        assert(parsedCompactRelayCode->endpoint == relayCode->endpoint);
+        assert(parsedCompactRelayCode->sessionKey == relayCode->sessionKey);
         assert(!JoinCode::parse("192.168.1.25:43720#AB|D-1234"));
+        assert(!JoinCode::parse("BT1-not_valid!"));
     }
 
     void testPermissions() {

@@ -4,88 +4,90 @@
 
 #include <Geode/Geode.hpp>
 #include <ws2tcpip.h>
+#include <cctype>
 #include <cstring>
 #include <string>
 #include <thread>
 
 namespace ep2p {
 
-// -------------------------------------------------------------------------
-// Helpers
-// -------------------------------------------------------------------------
+namespace {
+    SOCKET connectToBore(const std::string& relayHost) {
+        SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (sock == INVALID_SOCKET) return INVALID_SOCKET;
 
-static SOCKET connectToBore() {
-    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock == INVALID_SOCKET) return INVALID_SOCKET;
+        addrinfo hints{}, *res = nullptr;
+        hints.ai_family   = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_protocol = IPPROTO_TCP;
 
-    addrinfo hints{}, *res = nullptr;
-    hints.ai_family   = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    if (getaddrinfo("bore.pub", "7835", &hints, &res) != 0 || !res) {
-        closesocket(sock);
-        return INVALID_SOCKET;
+        if (getaddrinfo(relayHost.c_str(), "7835", &hints, &res) != 0 || !res) {
+            closesocket(sock);
+            return INVALID_SOCKET;
+        }
+
+        int rc = connect(sock, res->ai_addr, static_cast<int>(res->ai_addrlen));
+        freeaddrinfo(res);
+        if (rc == SOCKET_ERROR) {
+            closesocket(sock);
+            return INVALID_SOCKET;
+        }
+
+        return sock;
     }
-    int rc = connect(sock, res->ai_addr, static_cast<int>(res->ai_addrlen));
-    freeaddrinfo(res);
-    if (rc == SOCKET_ERROR) {
-        closesocket(sock);
-        return INVALID_SOCKET;
+
+    SOCKET connectLocal(uint16_t port) {
+        SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (sock == INVALID_SOCKET) return INVALID_SOCKET;
+
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port   = htons(port);
+        inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+        if (connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {
+            closesocket(sock);
+            return INVALID_SOCKET;
+        }
+        return sock;
     }
-    return sock;
-}
 
-static SOCKET connectLocal(uint16_t port) {
-    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock == INVALID_SOCKET) return INVALID_SOCKET;
-
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port   = htons(port);
-    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
-    if (connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {
-        closesocket(sock);
-        return INVALID_SOCKET;
+    bool recvExact(SOCKET sock, uint8_t* buf, size_t n) {
+        size_t got = 0;
+        while (got < n) {
+            int r = recv(sock, reinterpret_cast<char*>(buf + got),
+                         static_cast<int>(n - got), 0);
+            if (r <= 0) return false;
+            got += static_cast<size_t>(r);
+        }
+        return true;
     }
-    return sock;
-}
 
-static bool recvExact(SOCKET sock, uint8_t* buf, size_t n) {
-    size_t got = 0;
-    while (got < n) {
-        int r = recv(sock, reinterpret_cast<char*>(buf + got),
-                     static_cast<int>(n - got), 0);
-        if (r <= 0) return false;
-        got += static_cast<size_t>(r);
+    int jsonInt(const std::string& json, const std::string& key) {
+        auto kp = json.find("\"" + key + "\"");
+        if (kp == std::string::npos) return -1;
+        auto cp = json.find(':', kp);
+        if (cp == std::string::npos) return -1;
+        size_t i = cp + 1;
+        while (i < json.size() && std::isspace(static_cast<unsigned char>(json[i]))) ++i;
+        try {
+            return std::stoi(json.substr(i));
+        } catch (...) {
+            return -1;
+        }
     }
-    return true;
-}
 
-// Minimal JSON field extractors — covers bore's simple message shapes.
-static int jsonInt(const std::string& json, const std::string& key) {
-    auto kp = json.find("\"" + key + "\"");
-    if (kp == std::string::npos) return -1;
-    auto cp = json.find(':', kp);
-    if (cp == std::string::npos) return -1;
-    size_t i = cp + 1;
-    while (i < json.size() && std::isspace((unsigned char)json[i])) ++i;
-    try { return std::stoi(json.substr(i)); } catch (...) { return -1; }
+    std::string jsonStr(const std::string& json, const std::string& key) {
+        auto kp = json.find("\"" + key + "\"");
+        if (kp == std::string::npos) return {};
+        auto cp = json.find(':', kp);
+        if (cp == std::string::npos) return {};
+        auto q1 = json.find('"', cp + 1);
+        if (q1 == std::string::npos) return {};
+        auto q2 = json.find('"', q1 + 1);
+        if (q2 == std::string::npos) return {};
+        return json.substr(q1 + 1, q2 - q1 - 1);
+    }
 }
-
-static std::string jsonStr(const std::string& json, const std::string& key) {
-    auto kp = json.find("\"" + key + "\"");
-    if (kp == std::string::npos) return {};
-    auto cp = json.find(':', kp);
-    if (cp == std::string::npos) return {};
-    auto q1 = json.find('"', cp + 1);
-    if (q1 == std::string::npos) return {};
-    auto q2 = json.find('"', q1 + 1);
-    if (q2 == std::string::npos) return {};
-    return json.substr(q1 + 1, q2 - q1 - 1);
-}
-
-// -------------------------------------------------------------------------
-// BoreRelay
-// -------------------------------------------------------------------------
 
 bool BoreRelay::sendMsg(SOCKET sock, const std::string& json) {
     uint32_t net = htonl(static_cast<uint32_t>(json.size()));
@@ -104,8 +106,8 @@ std::string BoreRelay::recvMsg(SOCKET sock) {
     return buf;
 }
 
-void BoreRelay::bridgeConnection(const std::string& uuid, uint16_t localPort) {
-    SOCKET boreSock = connectToBore();
+void BoreRelay::bridgeConnection(std::string relayHost, const std::string& uuid, uint16_t localPort) {
+    SOCKET boreSock = connectToBore(relayHost);
     if (boreSock == INVALID_SOCKET) return;
 
     if (!sendMsg(boreSock, "{\"Accept\":\"" + uuid + "\"}")) {
@@ -119,7 +121,6 @@ void BoreRelay::bridgeConnection(const std::string& uuid, uint16_t localPort) {
         return;
     }
 
-    // bore → local
     std::thread([boreSock, localSock]() {
         char buf[4096];
         bool ok = true;
@@ -134,7 +135,6 @@ void BoreRelay::bridgeConnection(const std::string& uuid, uint16_t localPort) {
         shutdown(localSock, SD_SEND);
     }).detach();
 
-    // local → bore (owns cleanup of both sockets)
     std::thread([boreSock, localSock]() {
         char buf[4096];
         bool ok = true;
@@ -152,10 +152,15 @@ void BoreRelay::bridgeConnection(const std::string& uuid, uint16_t localPort) {
     }).detach();
 }
 
-void BoreRelay::controlLoop(uint16_t localPort,
+void BoreRelay::controlLoop(std::string relayHost,
+                             uint16_t localPort,
                              ReadyCallback onReady,
-                             StopCallback  onStop)
+                             StopCallback onStop)
 {
+    if (relayHost.empty()) {
+        relayHost = "bore.pub";
+    }
+
     auto fail = [&](std::string reason) {
         m_running = false;
         geode::Loader::get()->queueInMainThread([onStop, reason]() {
@@ -163,40 +168,38 @@ void BoreRelay::controlLoop(uint16_t localPort,
         });
     };
 
-    m_controlSock = connectToBore();
+    m_controlSock = connectToBore(relayHost);
     if (m_controlSock == INVALID_SOCKET)
-        return fail("Could not reach bore.pub — check your internet connection.");
+        return fail("Could not reach " + relayHost + " - check your internet connection.");
 
-    // 10-second timeout on the control socket for the initial handshake.
     DWORD recvTimeout = 10000;
     setsockopt(m_controlSock, SOL_SOCKET, SO_RCVTIMEO,
                reinterpret_cast<const char*>(&recvTimeout), sizeof(recvTimeout));
 
-    // Hello(localPort): {"Hello": 43720}
-    if (!sendMsg(m_controlSock, "{\"Hello\":" + std::to_string(localPort) + "}"))
-        return fail("Failed to send hello to bore.pub.");
+    // Hello(remotePort): 0 asks the relay to assign a random free public port.
+    if (!sendMsg(m_controlSock, "{\"Hello\":0}"))
+        return fail("Failed to send hello to " + relayHost + ".");
 
     std::string resp = recvMsg(m_controlSock);
     if (resp.empty()) {
         int err = WSAGetLastError();
-        geode::log::warn("[EditorP2P] bore.pub gave no response (WSA error {})", err);
-        return fail("bore.pub did not respond (error " + std::to_string(err) + ").");
+        geode::log::warn("[EditorP2P] {} gave no response (WSA error {})", relayHost, err);
+        return fail(relayHost + " did not respond (error " + std::to_string(err) + ").");
     }
 
-    geode::log::info("[EditorP2P] bore.pub handshake response: {}", resp);
+    geode::log::info("[EditorP2P] {} handshake response: {}", relayHost, resp);
 
     int publicPort = jsonInt(resp, "Hello");
     if (publicPort <= 0) {
         std::string err = jsonStr(resp, "Error");
-        return fail("bore.pub rejected the request: " + (err.empty() ? resp : err));
+        return fail(relayHost + " rejected the request: " + (err.empty() ? resp : err));
     }
 
-    // Remove the timeout for the long-lived control loop.
     recvTimeout = 0;
     setsockopt(m_controlSock, SOL_SOCKET, SO_RCVTIMEO,
                reinterpret_cast<const char*>(&recvTimeout), sizeof(recvTimeout));
 
-    std::string publicAddr = "bore.pub:" + std::to_string(publicPort);
+    std::string publicAddr = relayHost + ":" + std::to_string(publicPort);
     geode::Loader::get()->queueInMainThread([onReady, publicAddr]() {
         onReady(publicAddr);
     });
@@ -208,22 +211,26 @@ void BoreRelay::controlLoop(uint16_t localPort,
 
         std::string uuid = jsonStr(msg, "Connection");
         if (!uuid.empty())
-            std::thread(&BoreRelay::bridgeConnection, this, uuid, localPort).detach();
+            std::thread(&BoreRelay::bridgeConnection, this, relayHost, uuid, localPort).detach();
     }
 
     closesocket(m_controlSock);
     m_controlSock = INVALID_SOCKET;
-    m_running     = false;
+    m_running = false;
     geode::Loader::get()->queueInMainThread([onStop]() {
         onStop("Relay disconnected.");
     });
 }
 
-void BoreRelay::start(uint16_t localPort, ReadyCallback onReady, StopCallback onStop) {
+void BoreRelay::start(const std::string& relayHost,
+                      uint16_t localPort,
+                      ReadyCallback onReady,
+                      StopCallback onStop)
+{
     if (m_running) return;
-    m_running       = true;
+    m_running = true;
     m_controlThread = std::thread(&BoreRelay::controlLoop, this,
-                                  localPort, onReady, onStop);
+                                  relayHost, localPort, onReady, onStop);
 }
 
 void BoreRelay::stop() {

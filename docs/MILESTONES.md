@@ -10,7 +10,7 @@ Deliverables:
 - All scaffold headers included and compiling.
 - `WSAStartup` called in `$execute`.
 
-Acceptance: GD launches with the mod enabled. Geode mod list shows "EditorP2P 0.1.0".
+Acceptance: GD launches with the mod enabled. Geode mod list shows "EditorP2P 0.2.0".
 
 ---
 

@@ -99,13 +99,15 @@ $on_mod(Loaded) {
     cfg.displayName = resolveDisplayName();
     cfg.hostPort    = static_cast<unsigned short>(
                           Mod::get()->getSettingValue<int64_t>("default-port"));
+    cfg.relayHost   = Mod::get()->getSettingValue<std::string>("relay-host");
 
     // --- Install editor hooks (Geode $modify hooks self-register on static init,
     //     but installEditorHooks() logs confirmation and sets up any callbacks) ---
     installEditorHooks();
 
-    log::info("[EditorP2P] v{} loaded. Display name: '{}', port: {}",
+    log::info("[EditorP2P] v{} loaded. Display name: '{}', port: {}, relay: {}",
               Mod::get()->getVersion().toNonVString(),
               cfg.displayName,
-              cfg.hostPort);
+              cfg.hostPort,
+              cfg.relayHost);
 }

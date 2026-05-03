@@ -23,58 +23,62 @@ namespace ep2p {
     WinTcpTransport::WinTcpTransport(const Endpoint& remote, int connectTimeoutMs)
         : m_remote(remote)
     {
-        m_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (m_sock == INVALID_SOCKET) return;
+        addrinfo hints{}, *results = nullptr;
+        hints.ai_family   = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_protocol = IPPROTO_TCP;
 
-        u_long nonBlocking = 1;
-        ioctlsocket(m_sock, FIONBIO, &nonBlocking);
-
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(remote.port);
-        if (inet_pton(AF_INET, remote.host.c_str(), &addr.sin_addr) != 1) {
-            closesocket(m_sock);
-            m_sock = INVALID_SOCKET;
+        auto port = std::to_string(remote.port);
+        if (getaddrinfo(remote.host.c_str(), port.c_str(), &hints, &results) != 0 || !results) {
             return;
         }
 
-        int rc = ::connect(m_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
-        if (rc == SOCKET_ERROR) {
-            int err = WSAGetLastError();
-            if (err != WSAEWOULDBLOCK && err != WSAEINPROGRESS) {
-                closesocket(m_sock);
-                m_sock = INVALID_SOCKET;
-                return;
+        for (auto* addr = results; addr; addr = addr->ai_next) {
+            SOCKET candidate = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+            if (candidate == INVALID_SOCKET) continue;
+
+            u_long nonBlocking = 1;
+            ioctlsocket(candidate, FIONBIO, &nonBlocking);
+
+            int rc = ::connect(candidate, addr->ai_addr, static_cast<int>(addr->ai_addrlen));
+            if (rc == SOCKET_ERROR) {
+                int err = WSAGetLastError();
+                if (err != WSAEWOULDBLOCK && err != WSAEINPROGRESS) {
+                    closesocket(candidate);
+                    continue;
+                }
+
+                fd_set writeSet;
+                FD_ZERO(&writeSet);
+                FD_SET(candidate, &writeSet);
+
+                timeval timeout{};
+                timeout.tv_sec = connectTimeoutMs / 1000;
+                timeout.tv_usec = (connectTimeoutMs % 1000) * 1000;
+
+                rc = select(0, nullptr, &writeSet, nullptr, &timeout);
+                if (rc <= 0) {
+                    closesocket(candidate);
+                    continue;
+                }
+
+                int soError = 0;
+                int soLen = sizeof(soError);
+                getsockopt(candidate, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&soError), &soLen);
+                if (soError != 0) {
+                    closesocket(candidate);
+                    continue;
+                }
             }
 
-            fd_set writeSet;
-            FD_ZERO(&writeSet);
-            FD_SET(m_sock, &writeSet);
-
-            timeval timeout{};
-            timeout.tv_sec = connectTimeoutMs / 1000;
-            timeout.tv_usec = (connectTimeoutMs % 1000) * 1000;
-
-            rc = select(0, nullptr, &writeSet, nullptr, &timeout);
-            if (rc <= 0) {
-                closesocket(m_sock);
-                m_sock = INVALID_SOCKET;
-                return;
-            }
-
-            int soError = 0;
-            int soLen = sizeof(soError);
-            getsockopt(m_sock, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&soError), &soLen);
-            if (soError != 0) {
-                closesocket(m_sock);
-                m_sock = INVALID_SOCKET;
-                return;
-            }
+            u_long blocking = 0;
+            ioctlsocket(candidate, FIONBIO, &blocking);
+            m_sock = candidate;
+            m_connected = true;
+            break;
         }
 
-        u_long blocking = 0;
-        ioctlsocket(m_sock, FIONBIO, &blocking);
-        m_connected = true;
+        freeaddrinfo(results);
     }
 
     WinTcpTransport::~WinTcpTransport() {

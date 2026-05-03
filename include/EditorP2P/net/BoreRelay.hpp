@@ -17,23 +17,26 @@
 
 namespace ep2p {
 
-// Establishes a TCP tunnel through bore.pub so the host can accept connections
-// without port forwarding. Implements the bore wire protocol:
+// Establishes a TCP tunnel through a bore-compatible relay so the host can
+// accept connections without port forwarding. Implements the bore wire protocol:
 //   control port 7835, framing: 4-byte big-endian length + JSON body.
 class BoreRelay {
 public:
-    // Called on main thread with "bore.pub:PORT" when the tunnel is ready.
+    // Called on main thread with "relay-host:PORT" when the tunnel is ready.
     using ReadyCallback = std::function<void(std::string)>;
     // Called on main thread with a reason string when the tunnel stops.
     using StopCallback  = std::function<void(std::string)>;
 
-    void start(uint16_t localPort, ReadyCallback onReady, StopCallback onStop);
+    void start(const std::string& relayHost, uint16_t localPort,
+               ReadyCallback onReady, StopCallback onStop);
     void stop();
     bool isRunning() const { return m_running.load(); }
 
 private:
-    void        controlLoop(uint16_t localPort, ReadyCallback onReady, StopCallback onStop);
-    void        bridgeConnection(const std::string& uuid, uint16_t localPort);
+    void        controlLoop(std::string relayHost, uint16_t localPort,
+                            ReadyCallback onReady, StopCallback onStop);
+    void        bridgeConnection(std::string relayHost, const std::string& uuid,
+                                 uint16_t localPort);
     bool        sendMsg(SOCKET sock, const std::string& json);
     std::string recvMsg(SOCKET sock);
 

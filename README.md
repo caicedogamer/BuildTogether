@@ -1,20 +1,23 @@
 # EditorP2P
 
-Prototype Geode mod that adds direct P2P live collaboration to the Geometry Dash level editor.
+Prototype Geode mod that adds live collaboration to the Geometry Dash level editor.
 
 ## Goals
 
 - Two players (host + peer) can open the same level in GD's editor simultaneously.
 - The peer's cursor and name tag are visible to the host in real time.
 - Object placement syncs after the object is released (not during drag).
-- No public servers. No matchmaking service. Direct LAN or manual IP connection only.
+- Practical internet sessions through a bore-compatible TCP relay, with LAN
+  discovery still available for people on the same network.
 
 ## V1 Scope
 
 - Windows only.
 - 2 players maximum: one host, one peer.
 - Host is authoritative - the host owns the canonical editor state.
-- LAN discovery (UDP broadcast) + manual IP:port#sessionKey join.
+- LAN discovery with a short session key for same-network joins.
+- Compact internet join codes through a relay, formatted as `BT1-...`.
+- Public IP fallback for manual port-forwarded sessions if the relay is unavailable.
 - Milestone 1: mod compiles and loads in GD.
 - Milestone 2: host/join UI works, handshake completes.
 - Milestone 3: peer cursor appears in host editor (first playable proof).
@@ -44,6 +47,20 @@ The compiled `.geode` package appears in `build/` and can be dragged into GD's m
 
 Launch GD twice (Steam: right-click -> Manage -> Browse local files, run exe directly).
 One instance hosts, the other joins via the in-editor collab button.
+
+**Playing over the internet**
+
+The host clicks `Host`, waits for the `Internet:` line, then copies that `BT1-...`
+code to the other player. The default relay is `bore.pub`, so the normal happy path
+does not require router setup or port forwarding. Legacy `host:port#sessionKey`
+codes still work for manual testing.
+
+If the relay is down, the host UI falls back to a public-IP join code. That fallback
+requires the host to port forward the configured TCP port, default `43720`.
+
+Advanced users can change the Geode setting `Relay Host` to another
+bore-compatible relay. This keeps the mod usable if the public relay is busy or if
+you want to run your own relay for friends.
 
 ## Architecture
 

@@ -9,6 +9,7 @@ namespace ep2p {
     struct RuntimeConfig {
         std::string displayName   = "User";
         unsigned short hostPort   = 43720;
+        std::string relayHost     = "bore.pub";
 
         // Singleton accessor. Populated from Geode settings in main.cpp.
         static RuntimeConfig& get();

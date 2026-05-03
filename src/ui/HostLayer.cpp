@@ -185,8 +185,10 @@ namespace ep2p {
         m_relayConnecting = true;
         this->retain();
 
+        auto& runtime = RuntimeConfig::get();
         s_relay.start(
-            RuntimeConfig::get().hostPort,
+            runtime.relayHost,
+            runtime.hostPort,
             // onReady — called on main thread
             [this](std::string addr) {
                 m_relayConnecting = false;
@@ -208,11 +210,12 @@ namespace ep2p {
                             std::string lanLine = "LAN:      " + m_sessionKey;
                             std::string inetLine;
                             if (!ip.empty()) {
-                                std::string code = ip + ":"
-                                    + std::to_string(runtime.hostPort)
-                                    + "#" + m_sessionKey;
-                                m_joinCodeValue = code;
-                                inetLine = "Internet: " + code
+                                JoinCode code;
+                                code.endpoint.host = ip;
+                                code.endpoint.port = runtime.hostPort;
+                                code.sessionKey = m_sessionKey;
+                                m_joinCodeValue = code.formatCompact();
+                                inetLine = "Internet: " + m_joinCodeValue
                                            + "\n(requires port forwarding)";
                             } else {
                                 inetLine = "Internet: relay unavailable";
@@ -236,9 +239,11 @@ namespace ep2p {
         if (m_relayConnecting) {
             inetLine = "Internet: connecting to relay...";
         } else if (!m_relayAddr.empty()) {
-            std::string fullCode = m_relayAddr + "#" + m_sessionKey;
-            inetLine        = "Internet: " + fullCode;
-            m_joinCodeValue = fullCode;
+            JoinCode code;
+            code.endpoint = Endpoint::fromString(m_relayAddr);
+            code.sessionKey = m_sessionKey;
+            m_joinCodeValue = code.valid() ? code.formatCompact() : m_relayAddr + "#" + m_sessionKey;
+            inetLine = "Internet: " + m_joinCodeValue;
         } else {
             inetLine = "Internet: relay unavailable";
         }

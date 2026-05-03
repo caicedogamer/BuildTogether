@@ -30,9 +30,9 @@ namespace ep2p {
         cocos2d::CCLabelBMFont* m_statusLabel = nullptr;
         uint32_t m_seenStatusRevision = 0;
         std::string m_joinCodeText;
-        std::string m_joinCodeValue;   // internet code (bore.pub:PORT#key), or LAN key until resolved
+        std::string m_joinCodeValue;   // internet code (relay:PORT#key), or LAN key until resolved
         std::string m_sessionKey;
-        std::string m_relayAddr;       // "bore.pub:PORT" once tunnel is ready
+        std::string m_relayAddr;       // "relay:PORT" once tunnel is ready
         std::string m_lastRenderedStatus;
         std::atomic<bool> m_relayConnecting { false };
     };

@@ -2,8 +2,9 @@
 
 ## Overview
 
-EditorP2P is a host-authoritative, direct P2P mod. There is no central server.
-One player hosts; one player joins. The host owns the canonical level state.
+EditorP2P is a host-authoritative collaboration mod. Same-network sessions can
+connect directly over LAN; internet sessions can connect through a bore-compatible
+TCP relay. One player hosts; one player joins. The host owns the canonical level state.
 
 ```
 ┌─────────────────────────┐        TCP (control)        ┌─────────────────────────┐
@@ -33,6 +34,9 @@ One player hosts; one player joins. The host owns the canonical level state.
 
 - **TCP** on `CONTROL_PORT` (default 43720): reliable ordered delivery for all control
   and object messages (hello, place_object, lock_*, save_*, etc.).
+- **TCP relay tunnel** on bore control port `7835`: hosts can expose the control TCP
+  connection through a bore-compatible relay, default `bore.pub`, without router
+  setup. The relay only forwards bytes; the host remains authoritative.
 - **UDP** on `PRESENCE_PORT` (default 43721): fire-and-forget presence updates (cursor
   position). Stale presence is culled by timestamp on the receiver side.
 - LAN discovery uses UDP broadcast on `PRESENCE_PORT`.
@@ -59,5 +63,6 @@ One player hosts; one player joins. The host owns the canonical level state.
 
 - 2 players maximum (1 host + 1 peer). The `MAX_PEERS` constant gates this.
 - IPv4 only.
-- No NAT traversal. LAN or manually port-forwarded connections only.
+- Internet sessions use a TCP relay tunnel. There is no matchmaking service, UDP
+  hole punching, or multi-relay discovery.
 - No persistence across GD sessions. State is in-memory only.
