@@ -2,6 +2,7 @@
 #include <EditorP2P/core/SessionManager.hpp>
 #include <EditorP2P/config/RuntimeConfig.hpp>
 #include <EditorP2P/net/JoinCode.hpp>
+#include <EditorP2P/net/Discovery.hpp>
 #include <EditorP2P/ui/ActivityLogLayer.hpp>
 #include <EditorP2P/ui/PermissionsLayer.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
@@ -27,36 +28,30 @@ namespace ep2p {
     namespace {
         std::string getLocalJoinAddress() {
 #ifdef EP2P_WINDOWS
-            char hostname[256] = {};
-            if (gethostname(hostname, sizeof(hostname)) == SOCKET_ERROR) {
-                return "127.0.0.1";
-            }
-
-            addrinfo hints{};
-            hints.ai_family = AF_INET;
-            hints.ai_socktype = SOCK_STREAM;
-
-            addrinfo* results = nullptr;
-            if (getaddrinfo(hostname, nullptr, &hints, &results) != 0 || !results) {
-                return "127.0.0.1";
-            }
-
-            std::string fallback = "127.0.0.1";
-            for (auto* entry = results; entry; entry = entry->ai_next) {
-                auto* addr = reinterpret_cast<sockaddr_in*>(entry->ai_addr);
-                char ip[INET_ADDRSTRLEN] = {};
-                if (!inet_ntop(AF_INET, &addr->sin_addr, ip, sizeof(ip))) continue;
-
-                std::string candidate = ip;
-                if (candidate.rfind("127.", 0) != 0) {
-                    freeaddrinfo(results);
-                    return candidate;
+            // Use the UDP connect trick: the OS picks the outbound interface
+            // for a route to 8.8.8.8 without sending any traffic. This avoids
+            // returning a VirtualBox or VPN adapter ahead of the real LAN IP.
+            SOCKET probe = socket(AF_INET, SOCK_DGRAM, 0);
+            if (probe != INVALID_SOCKET) {
+                sockaddr_in dest{};
+                dest.sin_family = AF_INET;
+                dest.sin_port = htons(53);
+                inet_pton(AF_INET, "8.8.8.8", &dest.sin_addr);
+                if (connect(probe, reinterpret_cast<sockaddr*>(&dest), sizeof(dest)) == 0) {
+                    sockaddr_in local{};
+                    int localLen = sizeof(local);
+                    if (getsockname(probe, reinterpret_cast<sockaddr*>(&local), &localLen) == 0) {
+                        char ip[INET_ADDRSTRLEN] = {};
+                        if (inet_ntop(AF_INET, &local.sin_addr, ip, sizeof(ip))) {
+                            closesocket(probe);
+                            return ip;
+                        }
+                    }
                 }
-                fallback = candidate;
+                closesocket(probe);
             }
 
-            freeaddrinfo(results);
-            return fallback;
+            return "127.0.0.1";
 #else
             return "127.0.0.1";
 #endif
@@ -146,6 +141,8 @@ namespace ep2p {
         return true;
     }
 
+    static LanBroadcaster s_broadcaster;
+
     void HostLayer::onStartHost(CCObject*) {
         auto& runtime = RuntimeConfig::get();
 
@@ -162,17 +159,23 @@ namespace ep2p {
             return;
         }
 
-        JoinCode code;
-        code.endpoint.host = getLocalJoinAddress();
-        code.endpoint.port = runtime.hostPort;
-        code.sessionKey = config.sessionKey;
+        DiscoveryInfo info;
+        info.roomName        = config.roomName;
+        info.hostName        = config.displayName;
+        info.sessionKey      = config.sessionKey;
+        info.endpoint.host   = getLocalJoinAddress();
+        info.endpoint.port   = runtime.hostPort;
+        info.protocolVersion = 1;
+        s_broadcaster.stop();
+        s_broadcaster.start(info);
 
-        m_joinCodeValue = code.format();
-        m_joinCodeText = "Join code: " + m_joinCodeValue;
+        m_joinCodeValue = config.sessionKey;
+        m_joinCodeText = "Join code: " + config.sessionKey;
         setStatus("Room created.\n" + m_joinCodeText + "\nWaiting for peer.");
     }
 
     void HostLayer::onDisconnect(CCObject*) {
+        s_broadcaster.stop();
         SessionManager::get().disconnect("Host stopped from UI");
         m_joinCodeText.clear();
         m_joinCodeValue.clear();

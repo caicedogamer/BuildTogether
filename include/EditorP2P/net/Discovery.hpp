@@ -13,6 +13,7 @@ namespace ep2p {
     struct DiscoveryInfo {
         std::string roomName;
         std::string hostName;
+        std::string sessionKey;      // matches JoinCode::sessionKey
         Endpoint    endpoint;        // host IP + control port
         uint16_t    protocolVersion = 0;
     };

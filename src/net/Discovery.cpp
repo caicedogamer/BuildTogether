@@ -18,6 +18,7 @@ namespace ep2p {
         ss << "EDCO|"
            << info.roomName << "|"
            << info.hostName << "|"
+           << info.sessionKey << "|"
            << info.endpoint.port << "|"
            << info.protocolVersion;
         return ss.str();
@@ -32,14 +33,15 @@ namespace ep2p {
         std::string token;
         std::vector<std::string> parts;
         while (std::getline(ss, token, '|')) parts.push_back(token);
-        if (parts.size() < 4) return std::nullopt;
+        if (parts.size() < 5) return std::nullopt;
 
         DiscoveryInfo info;
         info.roomName         = parts[0];
         info.hostName         = parts[1];
+        info.sessionKey       = parts[2];
         info.endpoint.host    = senderIp;
-        auto port = StringUtil::parsePort(parts[2]);
-        auto protocolVersion = StringUtil::parseInt(parts[3]);
+        auto port = StringUtil::parsePort(parts[3]);
+        auto protocolVersion = StringUtil::parseInt(parts[4]);
         if (!port || !protocolVersion || *protocolVersion < 0 || *protocolVersion > 65535) {
             return std::nullopt;
         }
