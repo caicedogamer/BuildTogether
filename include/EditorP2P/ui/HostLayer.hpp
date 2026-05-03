@@ -25,16 +25,16 @@ namespace ep2p {
         void statusTick(float);
         void setStatus(const std::string& text);
         void refreshCodeDisplay();
-        void fetchPublicIP();
+        void startRelay();
 
         cocos2d::CCLabelBMFont* m_statusLabel = nullptr;
         uint32_t m_seenStatusRevision = 0;
         std::string m_joinCodeText;
-        std::string m_joinCodeValue;   // internet code (publicIP:port#key), or LAN key until resolved
+        std::string m_joinCodeValue;   // internet code (bore.pub:PORT#key), or LAN key until resolved
         std::string m_sessionKey;
-        std::string m_publicIP;
+        std::string m_relayAddr;       // "bore.pub:PORT" once tunnel is ready
         std::string m_lastRenderedStatus;
-        std::atomic<bool> m_fetchingIP { false };
+        std::atomic<bool> m_relayConnecting { false };
     };
 
 } // namespace ep2p

@@ -3,6 +3,7 @@
 #include <EditorP2P/config/RuntimeConfig.hpp>
 #include <EditorP2P/net/JoinCode.hpp>
 #include <EditorP2P/net/Discovery.hpp>
+#include <EditorP2P/net/BoreRelay.hpp>
 #include <EditorP2P/ui/ActivityLogLayer.hpp>
 #include <EditorP2P/ui/PermissionsLayer.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
@@ -20,7 +21,6 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
-#include <thread>
 
 using namespace geode::prelude;
 using namespace ep2p;
@@ -143,70 +143,50 @@ namespace ep2p {
     }
 
     static LanBroadcaster s_broadcaster;
+    static BoreRelay      s_relay;
 
-    void HostLayer::fetchPublicIP() {
-        m_fetchingIP = true;
+    void HostLayer::startRelay() {
+        m_relayConnecting = true;
         this->retain();
 
-        std::thread([this]() {
-            std::string ip;
-#ifdef EP2P_WINDOWS
-            SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-            if (sock != INVALID_SOCKET) {
-                addrinfo hints{}, *res = nullptr;
-                hints.ai_family   = AF_INET;
-                hints.ai_socktype = SOCK_STREAM;
-                if (getaddrinfo("api.ipify.org", "80", &hints, &res) == 0 && res) {
-                    if (connect(sock, res->ai_addr, static_cast<int>(res->ai_addrlen)) == 0) {
-                        const char* req =
-                            "GET / HTTP/1.0\r\n"
-                            "Host: api.ipify.org\r\n"
-                            "Connection: close\r\n\r\n";
-                        send(sock, req, static_cast<int>(strlen(req)), 0);
-
-                        char buf[256] = {};
-                        std::string raw;
-                        int n;
-                        while ((n = recv(sock, buf, sizeof(buf) - 1, 0)) > 0) {
-                            buf[n] = '\0';
-                            raw += buf;
-                        }
-                        auto pos = raw.find("\r\n\r\n");
-                        if (pos != std::string::npos)
-                            ip = raw.substr(pos + 4);
-                        // trim whitespace
-                        while (!ip.empty() && (ip.back() == '\r' || ip.back() == '\n' || ip.back() == ' '))
-                            ip.pop_back();
-                    }
-                    freeaddrinfo(res);
-                }
-                closesocket(sock);
-            }
-#endif
-            geode::Loader::get()->queueInMainThread([this, ip]() {
-                m_fetchingIP = false;
-                m_publicIP = ip;
+        s_relay.start(
+            RuntimeConfig::get().hostPort,
+            // onReady — called on main thread
+            [this](std::string addr) {
+                m_relayConnecting = false;
+                m_relayAddr       = addr;
                 refreshCodeDisplay();
                 this->release();
-            });
-        }).detach();
+            },
+            // onStop — called on main thread
+            [this](std::string reason) {
+                m_relayConnecting = false;
+                if (m_relayAddr.empty()) {
+                    // Failed before ready — show error in status
+                    setStatus("Relay failed: " + reason
+                              + "\nLAN: " + m_sessionKey
+                              + "\nWaiting for peer.");
+                    this->release();
+                }
+                // If it was already ready, a mid-session drop is handled by
+                // the existing disconnect flow; don't touch the UI here.
+            }
+        );
     }
 
     void HostLayer::refreshCodeDisplay() {
         if (m_sessionKey.empty()) return;
-        auto& runtime = RuntimeConfig::get();
 
-        std::string lanLine  = "LAN: " + m_sessionKey;
+        std::string lanLine  = "LAN:      " + m_sessionKey;
         std::string inetLine;
-        if (m_fetchingIP) {
-            inetLine = "Internet: fetching IP...";
-        } else if (!m_publicIP.empty()) {
-            std::string fullCode = m_publicIP + ":" + std::to_string(runtime.hostPort)
-                                   + "#" + m_sessionKey;
-            inetLine       = "Internet: " + fullCode;
+        if (m_relayConnecting) {
+            inetLine = "Internet: connecting to relay...";
+        } else if (!m_relayAddr.empty()) {
+            std::string fullCode = m_relayAddr + "#" + m_sessionKey;
+            inetLine        = "Internet: " + fullCode;
             m_joinCodeValue = fullCode;
         } else {
-            inetLine = "Internet: could not fetch IP";
+            inetLine = "Internet: relay unavailable";
         }
 
         m_joinCodeText = lanLine + "\n" + inetLine;
@@ -241,19 +221,20 @@ namespace ep2p {
 
         m_sessionKey    = config.sessionKey;
         m_joinCodeValue = config.sessionKey;
-        m_publicIP.clear();
+        m_relayAddr.clear();
 
-        setStatus("Room created.\nLAN: " + m_sessionKey + "\nInternet: fetching IP...\nWaiting for peer.");
-        fetchPublicIP();
+        setStatus("Room created.\nLAN: " + m_sessionKey + "\nInternet: connecting to relay...\nWaiting for peer.");
+        startRelay();
     }
 
     void HostLayer::onDisconnect(CCObject*) {
         s_broadcaster.stop();
+        s_relay.stop();
         SessionManager::get().disconnect("Host stopped from UI");
         m_joinCodeText.clear();
         m_joinCodeValue.clear();
         m_sessionKey.clear();
-        m_publicIP.clear();
+        m_relayAddr.clear();
         setStatus("Disconnected. Ready to host again.");
     }
 
