@@ -20,6 +20,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
+#include <thread>
 
 using namespace geode::prelude;
 using namespace ep2p;
@@ -143,6 +144,75 @@ namespace ep2p {
 
     static LanBroadcaster s_broadcaster;
 
+    void HostLayer::fetchPublicIP() {
+        m_fetchingIP = true;
+        this->retain();
+
+        std::thread([this]() {
+            std::string ip;
+#ifdef EP2P_WINDOWS
+            SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+            if (sock != INVALID_SOCKET) {
+                addrinfo hints{}, *res = nullptr;
+                hints.ai_family   = AF_INET;
+                hints.ai_socktype = SOCK_STREAM;
+                if (getaddrinfo("api.ipify.org", "80", &hints, &res) == 0 && res) {
+                    if (connect(sock, res->ai_addr, static_cast<int>(res->ai_addrlen)) == 0) {
+                        const char* req =
+                            "GET / HTTP/1.0\r\n"
+                            "Host: api.ipify.org\r\n"
+                            "Connection: close\r\n\r\n";
+                        send(sock, req, static_cast<int>(strlen(req)), 0);
+
+                        char buf[256] = {};
+                        std::string raw;
+                        int n;
+                        while ((n = recv(sock, buf, sizeof(buf) - 1, 0)) > 0) {
+                            buf[n] = '\0';
+                            raw += buf;
+                        }
+                        auto pos = raw.find("\r\n\r\n");
+                        if (pos != std::string::npos)
+                            ip = raw.substr(pos + 4);
+                        // trim whitespace
+                        while (!ip.empty() && (ip.back() == '\r' || ip.back() == '\n' || ip.back() == ' '))
+                            ip.pop_back();
+                    }
+                    freeaddrinfo(res);
+                }
+                closesocket(sock);
+            }
+#endif
+            geode::Loader::get()->queueInMainThread([this, ip]() {
+                m_fetchingIP = false;
+                m_publicIP = ip;
+                refreshCodeDisplay();
+                this->release();
+            });
+        }).detach();
+    }
+
+    void HostLayer::refreshCodeDisplay() {
+        if (m_sessionKey.empty()) return;
+        auto& runtime = RuntimeConfig::get();
+
+        std::string lanLine  = "LAN: " + m_sessionKey;
+        std::string inetLine;
+        if (m_fetchingIP) {
+            inetLine = "Internet: fetching IP...";
+        } else if (!m_publicIP.empty()) {
+            std::string fullCode = m_publicIP + ":" + std::to_string(runtime.hostPort)
+                                   + "#" + m_sessionKey;
+            inetLine       = "Internet: " + fullCode;
+            m_joinCodeValue = fullCode;
+        } else {
+            inetLine = "Internet: could not fetch IP";
+        }
+
+        m_joinCodeText = lanLine + "\n" + inetLine;
+        setStatus("Room created.\n" + m_joinCodeText + "\nWaiting for peer.");
+    }
+
     void HostLayer::onStartHost(CCObject*) {
         auto& runtime = RuntimeConfig::get();
 
@@ -169,9 +239,12 @@ namespace ep2p {
         s_broadcaster.stop();
         s_broadcaster.start(info);
 
+        m_sessionKey    = config.sessionKey;
         m_joinCodeValue = config.sessionKey;
-        m_joinCodeText = "Join code: " + config.sessionKey;
-        setStatus("Room created.\n" + m_joinCodeText + "\nWaiting for peer.");
+        m_publicIP.clear();
+
+        setStatus("Room created.\nLAN: " + m_sessionKey + "\nInternet: fetching IP...\nWaiting for peer.");
+        fetchPublicIP();
     }
 
     void HostLayer::onDisconnect(CCObject*) {
@@ -179,6 +252,8 @@ namespace ep2p {
         SessionManager::get().disconnect("Host stopped from UI");
         m_joinCodeText.clear();
         m_joinCodeValue.clear();
+        m_sessionKey.clear();
+        m_publicIP.clear();
         setStatus("Disconnected. Ready to host again.");
     }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Geode/ui/Popup.hpp>
+#include <atomic>
 #include <string>
 
 namespace ep2p {
@@ -23,12 +24,17 @@ namespace ep2p {
         void onActivityLog(cocos2d::CCObject*);
         void statusTick(float);
         void setStatus(const std::string& text);
+        void refreshCodeDisplay();
+        void fetchPublicIP();
 
         cocos2d::CCLabelBMFont* m_statusLabel = nullptr;
         uint32_t m_seenStatusRevision = 0;
         std::string m_joinCodeText;
-        std::string m_joinCodeValue;
+        std::string m_joinCodeValue;   // internet code (publicIP:port#key), or LAN key until resolved
+        std::string m_sessionKey;
+        std::string m_publicIP;
         std::string m_lastRenderedStatus;
+        std::atomic<bool> m_fetchingIP { false };
     };
 
 } // namespace ep2p
