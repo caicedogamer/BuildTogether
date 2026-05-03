@@ -21,6 +21,8 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
+#include <cstring>
+#include <thread>
 
 using namespace geode::prelude;
 using namespace ep2p;
@@ -145,6 +147,40 @@ namespace ep2p {
     static LanBroadcaster s_broadcaster;
     static BoreRelay      s_relay;
 
+    static std::string fetchPublicIP() {
+#ifdef EP2P_WINDOWS
+        SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (sock == INVALID_SOCKET) return {};
+        DWORD timeout = 8000;
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+                   reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+        addrinfo hints{}, *res = nullptr;
+        hints.ai_family   = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        if (getaddrinfo("api.ipify.org", "80", &hints, &res) != 0 || !res) {
+            closesocket(sock); return {};
+        }
+        bool ok = connect(sock, res->ai_addr, static_cast<int>(res->ai_addrlen)) == 0;
+        freeaddrinfo(res);
+        if (!ok) { closesocket(sock); return {}; }
+        const char* req = "GET / HTTP/1.0\r\nHost: api.ipify.org\r\nConnection: close\r\n\r\n";
+        send(sock, req, static_cast<int>(strlen(req)), 0);
+        char buf[256] = {};
+        std::string raw;
+        int n;
+        while ((n = recv(sock, buf, sizeof(buf) - 1, 0)) > 0) { buf[n] = '\0'; raw += buf; }
+        closesocket(sock);
+        auto pos = raw.find("\r\n\r\n");
+        if (pos == std::string::npos) return {};
+        std::string ip = raw.substr(pos + 4);
+        while (!ip.empty() && (ip.back() == '\r' || ip.back() == '\n' || ip.back() == ' '))
+            ip.pop_back();
+        return ip;
+#else
+        return {};
+#endif
+    }
+
     void HostLayer::startRelay() {
         m_relayConnecting = true;
         this->retain();
@@ -162,14 +198,32 @@ namespace ep2p {
             [this](std::string reason) {
                 m_relayConnecting = false;
                 if (m_relayAddr.empty()) {
-                    // Failed before ready — show error in status
-                    setStatus("Relay failed: " + reason
-                              + "\nLAN: " + m_sessionKey
-                              + "\nWaiting for peer.");
+                    // bore failed — fall back to public IP + port forwarding note
+                    geode::log::warn("[EditorP2P] Relay failed: {}", reason);
+                    this->retain();
+                    std::thread([this]() {
+                        std::string ip = fetchPublicIP();
+                        geode::Loader::get()->queueInMainThread([this, ip]() {
+                            auto& runtime = RuntimeConfig::get();
+                            std::string lanLine = "LAN:      " + m_sessionKey;
+                            std::string inetLine;
+                            if (!ip.empty()) {
+                                std::string code = ip + ":"
+                                    + std::to_string(runtime.hostPort)
+                                    + "#" + m_sessionKey;
+                                m_joinCodeValue = code;
+                                inetLine = "Internet: " + code
+                                           + "\n(requires port forwarding)";
+                            } else {
+                                inetLine = "Internet: relay unavailable";
+                            }
+                            m_joinCodeText = lanLine + "\n" + inetLine;
+                            setStatus("Room created.\n" + m_joinCodeText + "\nWaiting for peer.");
+                            this->release();
+                        });
+                    }).detach();
                     this->release();
                 }
-                // If it was already ready, a mid-session drop is handled by
-                // the existing disconnect flow; don't touch the UI here.
             }
         );
     }

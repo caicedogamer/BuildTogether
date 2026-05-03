@@ -167,19 +167,34 @@ void BoreRelay::controlLoop(uint16_t localPort,
     if (m_controlSock == INVALID_SOCKET)
         return fail("Could not reach bore.pub — check your internet connection.");
 
+    // 10-second timeout on the control socket for the initial handshake.
+    DWORD recvTimeout = 10000;
+    setsockopt(m_controlSock, SOL_SOCKET, SO_RCVTIMEO,
+               reinterpret_cast<const char*>(&recvTimeout), sizeof(recvTimeout));
+
     // Hello(localPort): {"Hello": 43720}
     if (!sendMsg(m_controlSock, "{\"Hello\":" + std::to_string(localPort) + "}"))
         return fail("Failed to send hello to bore.pub.");
 
     std::string resp = recvMsg(m_controlSock);
-    if (resp.empty())
-        return fail("No response from bore.pub.");
+    if (resp.empty()) {
+        int err = WSAGetLastError();
+        geode::log::warn("[EditorP2P] bore.pub gave no response (WSA error {})", err);
+        return fail("bore.pub did not respond (error " + std::to_string(err) + ").");
+    }
+
+    geode::log::info("[EditorP2P] bore.pub handshake response: {}", resp);
 
     int publicPort = jsonInt(resp, "Hello");
     if (publicPort <= 0) {
         std::string err = jsonStr(resp, "Error");
         return fail("bore.pub rejected the request: " + (err.empty() ? resp : err));
     }
+
+    // Remove the timeout for the long-lived control loop.
+    recvTimeout = 0;
+    setsockopt(m_controlSock, SOL_SOCKET, SO_RCVTIMEO,
+               reinterpret_cast<const char*>(&recvTimeout), sizeof(recvTimeout));
 
     std::string publicAddr = "bore.pub:" + std::to_string(publicPort);
     geode::Loader::get()->queueInMainThread([onReady, publicAddr]() {
